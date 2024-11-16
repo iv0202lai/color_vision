@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>100 Hue Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin: 0;
+            padding: 0;
+        }
+        .group {
+            margin: 20px 0;
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+        }
+        .block {
+            width: 60px;
+            height: 60px;
+            text-align: center;
+            line-height: 60px;
+            font-size: 20px;
+            color: white;
+            font-weight: bold;
+            border-radius: 5px;
+            cursor: grab;
+            user-select: none;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .block.dragging {
+            transform: scale(1.2);
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
+        }
+        .fixed {
+            cursor: not-allowed;
+            background-color: gray;
+        }
+        #controls {
+            margin: 20px;
+        }
+        #output {
+            margin-top: 20px;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <h1>100 Hue Test</h1>
+    <div id="container"></div>
+    <div id="controls">
+        <button onclick="submitOrder()">Submit Order</button>
+        <button onclick="randomizeOrder()">Randomize</button>
+        <button onclick="resetOrder()">Reset</button>
+        <button id="toggleButton" onclick="toggleNumbers()">Hide Numbers</button>
+    </div>
+    <div id="output">Order Result:</div>
+    <iframe id="rdrrIframe" src="" title="R Snippets" style="width:100%; height:400px; border:none;"></iframe>
+    <script src="100hue.js"></script>
+</body>
+</html>
