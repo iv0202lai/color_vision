@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Farnsworth D-15 Test</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        text-align: center;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        min-height: 100vh;
+        overflow-y: auto;
+      }
+      #container {
+        display: flex;
+        justify-content: center;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin: 20px auto;
+        padding: 10px;
+      }
+      .block {
+        width: 60px;
+        height: 60px;
+        text-align: center;
+        line-height: 60px;
+        font-size: 20px;
+        color: white;
+        font-weight: bold;
+        border-radius: 5px;
+        cursor: grab;
+        user-select: none;
+        -webkit-user-drag: none;
+        transition: transform 0.2s, box-shadow 0.2s;
+      }
+      .block.dragging {
+        transform: scale(1.2);
+        box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
+      }
+      .fixed {
+        cursor: not-allowed;
+        background-color: rgb(55, 129, 193);
+      }
+      #controls {
+        display: flex;
+        justify-content: center;
+        gap: 10px;
+        margin-bottom: 10px;
+      }
+      #output {
+        margin: 10px auto;
+        font-size: 16px;
+      }
+      button {
+        padding: 10px 20px;
+        font-size: 16px;
+        cursor: pointer;
+      }
+      #chart-and-result {
+        display: flex;
+        justify-content: flex-start; /* 左對齊 */
+        align-items: flex-start; /* 使圖表和結果對齊 */
+        gap: 20px; /* 圖表和結果區域之間的間距 */
+        width: 90%; /* 確保整體佔據足夠的寬度 */
+        margin: 0 auto; /* 居中佈局 */
+      }
+
+      #chart-container {
+        flex-shrink: 0; /* 保持圖表大小 */
+        width: 600px; /* 固定圖表寬度 */
+        height: 600px; /* 固定圖表高度 */
+      }
+
+      #result-container {
+        flex-grow: 1; /* 讓結果區域填滿剩餘空間 */
+        min-width: 300px; /* 設置最小寬度，防止過小 */
+        max-width: 600px; /* 設置最大寬度，避免過大 */
+        border: 1px solid #ccc; /* 增加邊框 */
+        padding: 10px; /* 增加內間距 */
+        border-radius: 5px; /* 增加圓角 */
+        background-color: #f9f9f9; /* 設置背景顏色 */
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); /* 增加陰影效果 */
+        overflow-y: auto; /* 如果內容過多，則允許滾動 */
+        max-height: 600px; /* 防止結果區域高度超過圖表 */
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Farnsworth D-15 Test</h1>
+    <div id="container"></div>
+    <div id="controls">
+      <button onclick="submitOrder()">送出</button>
+      <button onclick="resetOrder()">還原排序</button>
+      <button id="toggleButton" onclick="toggleNumbers()">隱藏數字</button>
+      <button onclick="randomizeOrder()">隨機排序</button>
+      <button onclick="downloadImage()">下載圖片</button>
+    </div>
+    <div id="output">排序結果：</div>
+    <pre id="result"></pre>
+    <div
+      id="chart-and-result"
+      style="
+        display: flex;
+        justify-content: center;
+        align-items: flex-start;
+        gap: 20px;
+      "
+    >
+      <div id="chart-container">
+        <svg id="chart" width="600" height="600"></svg>
+      </div>
+      <div
+        id="result-container"
+        style="
+          display: none;
+          text-align: left;
+          min-width: 300px;
+          max-width: 600px;
+          overflow-wrap: break-word;
+          border: 1px solid #ccc;
+          padding: 10px;
+          border-radius: 5px;
+          background-color: #f9f9f9;
+          box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        "
+      ></div>
+    </div>
+
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script>
+      const container = document.getElementById("container");
+      const toggleButton = document.getElementById("toggleButton");
+      let draggedBlock = null;
+      let numbersHidden = false;
+
+      const colors = [
+        "rgb(55, 129, 193)",
+        "rgb(53, 131, 180)",
+        "rgb(59, 132, 167)",
+        "rgb(57, 133, 156)",
+        "rgb(59, 134, 144)",
+        "rgb(63, 135, 130)",
+        "rgb(88, 132, 115)",
+        "rgb(108, 129, 100)",
+        "rgb(131, 123, 93)",
+        "rgb(144, 118, 96)",
+        "rgb(158, 110, 111)",
+        "rgb(159, 109, 124)",
+        "rgb(156, 109, 137)",
+        "rgb(146, 112, 153)",
+        "rgb(143, 111, 164)",
+        "rgb(128, 115, 178)",
+      ];
+
+      let blocksData = colors.map((color, index) => ({
+        color,
+        number: index > 0 ? index : "",
+      }));
+
+      function initializeBlocks() {
+        container.innerHTML = "";
+        blocksData.forEach((data, index) => {
+          const block = document.createElement("div");
+          block.className = "block";
+          block.style.backgroundColor = data.color;
+          block.textContent = numbersHidden ? "" : data.number;
+          if (index === 0) block.classList.add("fixed");
+          container.appendChild(block);
+        });
+        bindEvents(); // 確保每次初始化時重新綁定事件
+      }
+
+      function randomizeOrder() {
+        const movableBlocks = blocksData.slice(1);
+        for (let i = movableBlocks.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [movableBlocks[i], movableBlocks[j]] = [
+            movableBlocks[j],
+            movableBlocks[i],
+          ];
+        }
+        blocksData = [blocksData[0], ...movableBlocks];
+        initializeBlocks(); // 確保重新排列後的方塊也綁定事件
+      }
+
+      function toggleNumbers() {
+        numbersHidden = !numbersHidden;
+        Array.from(container.children).forEach((block, index) => {
+          block.textContent = numbersHidden ? "" : blocksData[index].number;
+        });
+        toggleButton.textContent = numbersHidden ? "顯示數字" : "隱藏數字";
+      }
+
+      function startDrag(e) {
+        const target = e.target.closest(".block");
+        if (!target || target.classList.contains("fixed")) return;
+
+        draggedBlock = target;
+        draggedBlock.classList.add("dragging");
+      }
+
+      function moveDrag(e) {
+        if (!draggedBlock) return;
+
+        const touch = e.touches ? e.touches[0] : e;
+        const elementUnderPointer = document.elementFromPoint(
+          touch.clientX,
+          touch.clientY
+        );
+        const targetBlock = elementUnderPointer?.closest(".block:not(.fixed)");
+
+        if (targetBlock && targetBlock !== draggedBlock) {
+          const draggedIndex = Array.from(container.children).indexOf(
+            draggedBlock
+          );
+          const targetIndex = Array.from(container.children).indexOf(
+            targetBlock
+          );
+
+          container.removeChild(draggedBlock);
+          if (draggedIndex < targetIndex) {
+            container.insertBefore(draggedBlock, targetBlock.nextSibling);
+          } else {
+            container.insertBefore(draggedBlock, targetBlock);
+          }
+
+          const draggedData = blocksData.splice(draggedIndex, 1)[0];
+          blocksData.splice(targetIndex, 0, draggedData);
+        }
+      }
+
+      function endDrag() {
+        if (draggedBlock) {
+          draggedBlock.classList.remove("dragging");
+          draggedBlock = null;
+        }
+      }
+
+      function bindEvents() {
+        container.querySelectorAll(".block").forEach((block) => {
+          block.addEventListener("mousedown", startDrag);
+          block.addEventListener("touchstart", startDrag);
+        });
+        container.addEventListener("mousemove", moveDrag);
+        document.addEventListener("mouseup", endDrag);
+        container.addEventListener("touchmove", moveDrag);
+        document.addEventListener("touchend", endDrag);
+      }
+
+      function submitOrder() {
+        const order = blocksData.slice(1).map((data) => data.number);
+        document.getElementById("output").textContent = `排序結果：${order.join(
+          ", "
+        )}`;
+        plotD15(order);
+
+        calc_result = D15Foutch(order, "D15"); // 假設該函數已定義
+        displayCalcResult(calc_result); // 顯示格式化結果
+      }
+
+      function resetOrder() {
+        blocksData = colors.map((color, index) => ({
+          color,
+          number: index > 0 ? index : "",
+        }));
+        initializeBlocks();
+        document.getElementById("output").textContent = "排序結果：";
+        plotD15([]);
+        document.getElementById("result").textContent = "";
+
+        // 隱藏並清空結果容器
+        const resultContainer = document.getElementById("result-container");
+        resultContainer.style.display = "none";
+        resultContainer.innerHTML = "";
+      }
+
+      initializeBlocks();
+
+      // 繪圖函數
+      const scaleFactor = 2;
+      const circPos = [
+        { x: 22, y: 125 },
+        { x: 44, y: 82 },
+        { x: 76, y: 50 },
+        { x: 118, y: 28 },
+        { x: 150, y: 28 },
+        { x: 193, y: 28 },
+        { x: 246, y: 50 },
+        { x: 278, y: 92 },
+        { x: 289, y: 167 },
+        { x: 278, y: 230 },
+        { x: 246, y: 263 },
+        { x: 204, y: 284 },
+        { x: 172, y: 284 },
+        { x: 118, y: 274 },
+        { x: 86, y: 252 },
+        { x: 44, y: 209 },
+      ].map((p) => ({ x: p.x * scaleFactor, y: p.y * scaleFactor }));
+
+      const fixedLines = [
+        {
+          x1: 96,
+          y1: 27,
+          x2: 138,
+          y2: 267,
+          color: "red",
+          label: "Tritan",
+          lx: 195,
+          ly: 145,
+          rotation: 20,
+        },
+        {
+          x1: 133,
+          y1: 14,
+          x2: 102,
+          y2: 290,
+          color: "green",
+          label: "Protan",
+          lx: 94,
+          ly: 80,
+          rotation: 90,
+        },
+        {
+          x1: 58,
+          y1: 210,
+          x2: 293,
+          y2: 131,
+          color: "blue",
+          label: "Deutan",
+          lx: 137,
+          ly: 83,
+          rotation: 90,
+        },
+      ].map((line) => ({
+        ...line,
+        x1: line.x1 * scaleFactor,
+        y1: line.y1 * scaleFactor,
+        x2: line.x2 * scaleFactor,
+        y2: line.y2 * scaleFactor,
+        lx: line.lx * scaleFactor,
+        ly: line.ly * scaleFactor,
+      }));
+
+      let lastOrder = [];
+
+      function plotD15(userD15values) {
+        lastOrder = userD15values; // Store the last order for download
+        const svg = d3.select("#chart");
+        const width = 600,
+          height = 600;
+        const centerX = width / 2,
+          centerY = height / 2;
+        svg.selectAll("*").remove();
+
+        fixedLines.forEach((line) => {
+          svg
+            .append("line")
+            .attr("x1", centerX + line.x1 - 150 * scaleFactor)
+            .attr("y1", centerY + line.y1 - 150 * scaleFactor)
+            .attr("x2", centerX + line.x2 - 150 * scaleFactor)
+            .attr("y2", centerY + line.y2 - 150 * scaleFactor)
+            .attr("class", "fixed-line")
+            .style("stroke", line.color)
+            .style("stroke-dasharray", "5, 5");
+
+          svg
+            .append("text")
+            .attr("x", centerX + line.lx - 150 * scaleFactor)
+            .attr("y", centerY + line.ly - 150 * scaleFactor)
+            .attr("class", "rotated-text")
+            .attr(
+              "transform",
+              `rotate(${line.rotation}, ${
+                centerX + line.lx - 150 * scaleFactor
+              }, ${centerY + line.ly - 150 * scaleFactor})`
+            )
+            .text(line.label);
+        });
+
+        svg
+          .selectAll(".circle")
+          .data(circPos)
+          .enter()
+          .append("circle")
+          .attr("cx", (d) => centerX + d.x - 150 * scaleFactor)
+          .attr("cy", (d) => centerY + d.y - 150 * scaleFactor)
+          .attr("r", (10 * scaleFactor) / 2) // Make circles smaller and hollow
+          .attr("class", "circle")
+          .attr("fill", "none")
+          .attr("stroke", "black");
+
+        svg
+          .selectAll(".label")
+          .data(circPos)
+          .enter()
+          .append("text")
+          .attr("x", (d) => centerX + d.x - 150 * scaleFactor)
+          .attr("y", (d) => centerY + d.y - 150 * scaleFactor - 15) // Place labels outside the circles
+          .attr("class", "label")
+          .style("font-size", `${12 * scaleFactor}px`)
+          .text((d, i) => (i === 0 ? "Reference" : i));
+
+        if (userD15values.length > 0) {
+          const userLineCoordinates = [
+            {
+              x: centerX + circPos[0].x - 150 * scaleFactor,
+              y: centerY + circPos[0].y - 150 * scaleFactor,
+            },
+            ...userD15values.map((v) => ({
+              x: centerX + circPos[v].x - 150 * scaleFactor,
+              y: centerY + circPos[v].y - 150 * scaleFactor,
+            })),
+          ];
+
+          const lineGenerator = d3
+            .line()
+            .x((d) => d.x)
+            .y((d) => d.y);
+
+          svg
+            .append("path")
+            .datum(userLineCoordinates)
+            .attr("class", "user-line")
+            .attr("d", lineGenerator)
+            .attr("fill", "none") // No fill for the path
+            .attr("stroke", "black");
+        }
+      }
+
+      function downloadImage() {
+        if (lastOrder.length === 0) {
+          alert("請先送出排序結果，再下載圖片。");
+          return;
+        }
+        const svg = document.getElementById("chart");
+        const svgData = new XMLSerializer().serializeToString(svg);
+        const canvas = document.createElement("canvas");
+        canvas.width = svg.width.baseVal.value * 2; // Increase resolution by setting a higher canvas size
+        canvas.height = svg.height.baseVal.value * 2; // Increase resolution by setting a higher canvas size
+        const ctx = canvas.getContext("2d");
+        ctx.fillStyle = "white"; // Set background to white
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        const img = new Image();
+        img.onload = function () {
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          const a = document.createElement("a");
+          a.href = canvas.toDataURL("image/jpeg");
+          a.download = "farnsworth_d15_test.jpg";
+          a.click();
+        };
+        img.src = "data:image/svg+xml;base64," + btoa(svgData);
+      }
+
+      plotD15([]); // 初始畫圖，無連線
+
+      function displayCalcResult(calc_result) {
+        const resultContainer = document.getElementById("result-container");
+        resultContainer.innerHTML = ""; // 清空先前內容
+
+        for (const [key, value] of Object.entries(calc_result)) {
+          const section = document.createElement("div");
+          section.style.marginBottom = "10px";
+
+          // 加粗標題
+          const title = document.createElement("strong");
+          title.textContent = key;
+          section.appendChild(title);
+
+          // 顯示每個鍵值對
+          if (typeof value === "object") {
+            for (const [subKey, subValue] of Object.entries(value)) {
+              const line = document.createElement("div");
+              line.textContent = `${subKey}: ${subValue}`;
+              section.appendChild(line);
+            }
+          } else {
+            const line = document.createElement("div");
+            line.textContent = value;
+            section.appendChild(line);
+          }
+
+          resultContainer.appendChild(section);
+        }
+
+        // 顯示結果容器
+        resultContainer.style.display = "block";
+      }
+    </script>
+    <script src="D15_calculation.js"></script>
+  </body>
+</html>
