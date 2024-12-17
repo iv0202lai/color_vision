@@ -171,6 +171,26 @@
           if (index === 0) block.classList.add("fixed");
           container.appendChild(block);
         });
+        let startX = 0;
+        let startY = 0;
+
+        document.addEventListener('touchstart', function(event) {
+            const touch = event.touches[0];
+            startX = touch.pageX;
+            startY = touch.pageY;
+        }, { passive: false });
+
+        document.addEventListener('touchmove', function(event) {
+            const touch = event.touches[0];
+            const deltaX = touch.pageX - startX;
+            const deltaY = touch.pageY - startY;
+
+            // 只有當水平方向的滑動距離超過垂直方向時才阻止頁面滾動
+            if (Math.abs(deltaX) > Math.abs(deltaY)) {
+                event.preventDefault();  // 禁止水平滾動
+            }
+        }, { passive: false });
+
         bindEvents(); // 確保每次初始化時重新綁定事件
       }
 
